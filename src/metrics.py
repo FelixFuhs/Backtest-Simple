@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import PercentFormatter
 from typing import Optional 
 
-from src.backtester import BacktestResult
+from src.backtester import BacktestResult # Assuming this path is correct for your setup
 
 
 def summarize(bt: BacktestResult) -> pd.Series:
@@ -56,7 +56,7 @@ def summarize(bt: BacktestResult) -> pd.Series:
         std_log_ret = log_rets.std()
         if std_log_ret > 1e-9: 
             metrics['Sharpe Ratio'] = (np.sqrt(252) * mean_log_ret) / std_log_ret
-        elif abs(mean_log_ret) < 1e-9 and abs(std_log_ret) < 1e-9 : # Essentially zero returns and zero vol
+        elif abs(mean_log_ret) < 1e-9 and abs(std_log_ret) < 1e-9 : 
             metrics['Sharpe Ratio'] = 0.0
     
     # --- Max Drawdown ---
@@ -71,7 +71,7 @@ def summarize(bt: BacktestResult) -> pd.Series:
                 metrics['Max Drawdown (%)'] = abs(max_drawdown_val) * 100
 
     # --- Win Rate ---
-    daily_arith_rets = nav.pct_change().dropna() # Using fill_method=None by default in modern pandas
+    daily_arith_rets = nav.pct_change(fill_method=None).dropna() 
     if not daily_arith_rets.empty:
         positive_return_days = (daily_arith_rets > 0).sum()
         total_return_days = len(daily_arith_rets)
@@ -123,7 +123,7 @@ def plot_drawdown(bt: BacktestResult, ax: Optional[plt.Axes] = None) -> plt.Axes
         drawdown_series.fillna(0, inplace=True) 
 
     drawdown_series.plot(ax=ax, kind='area', color='red', alpha=0.3, legend=False)
-    ax.plot(drawdown_series.index, drawdown_series, color='red', lw=0.5) 
+    # Removed the redundant ax.plot line that caused the UserWarning
     
     ax.axhline(0, color='grey', linestyle='--')
     ax.set_title("Drawdown from Peak")
