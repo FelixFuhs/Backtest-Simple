@@ -15,27 +15,25 @@ def sma_crossover_signal(price: pd.Series, short: int = 50, long: int = 200) -> 
     if not isinstance(price, pd.Series):
         raise TypeError("Input 'price' must be a pandas Series.")
     if price.empty:
-        return pd.Series(dtype=int) # Return empty series of int type if input is empty
+        # Return empty series of int type if input is empty, with same index if possible
+        return pd.Series(dtype=int, index=price.index) 
 
     if short <= 0 or long <= 0:
         raise ValueError("SMA window periods 'short' and 'long' must be positive integers.")
-    if short >= long:
-        # This is not strictly an error, but a warning might be useful for typical crossover interpretation.
-        # However, the function will still compute based on the numbers given.
-        # For now, no warning as per "clean implementation" note.
-        pass
+    # It's common for short < long, but the code will run regardless.
+    # No explicit error for short >= long as per current spec.
 
     # Calculate short and long Simple Moving Averages
     # .rolling().mean() will produce NaNs for initial periods where window is not filled
-    sma_short = price.rolling(window=short).mean()
-    sma_long = price.rolling(window=long).mean()
+    sma_short = price.rolling(window=short, min_periods=short).mean()
+    sma_long = price.rolling(window=long, min_periods=long).mean()
 
     # Initialize positions to 0 (flat)
     # The index will be the same as the input price Series
     position = pd.Series(0, index=price.index)
 
     # Set position to 1 (long) where short SMA is greater than long SMA
-    # Pandas handles comparisons involving NaNs by evaluating them to False.
+    # Pandas handles comparisons involving NaNs by evaluating them to False by default.
     # So, during initial periods where sma_short or sma_long are NaN,
     # the condition (sma_short > sma_long) will be False, and position remains 0.
     position[sma_short > sma_long] = 1

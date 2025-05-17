@@ -41,17 +41,11 @@ class Backtester:
         if self.original_rf is not None:
             self.rf = self.original_rf.loc[common_idx].copy()
         else:
-            self.rf = None # Ensure self.rf is explicitly None if not used
-
-        # It's assumed strategy.py provides clean 0/1 integer positions.
-        # Add a clip/round for robustness if inputs could be noisy, though not specified.
-        # self.positions = self.positions.clip(0, 1).round().astype(int)
-
+            self.rf = None 
 
     def run(self) -> BacktestResult:
         """Run backtest, return equity curve, trades, and final positions."""
         if self.prices.empty:
-            # Handle case with no overlapping data
             empty_idx = pd.DatetimeIndex([])
             return BacktestResult(
                 equity_curve=pd.Series(dtype=float, index=empty_idx),
@@ -60,36 +54,25 @@ class Backtester:
             )
 
         # 1. Calculate price returns (first element will be NaN)
-        asset_returns = self.prices.pct_change()
+        # Explicitly set fill_method=None to adopt modern behavior and silence warning about 'pad'
+        asset_returns = self.prices.pct_change(fill_method=None)
 
         # 2. Determine trades (+1 for buy, -1 for sell, 0 for hold)
-        # positions.diff() gives NaN for the first element.
-        trades_ts = self.positions.diff()
+        trades_ts = self.positions.diff() # First element is NaN
 
         # 3. Calculate transaction cost percentage
-        # Assuming cost_bps is round-trip, so one-way cost is cost_bps / 2.0
         one_way_cost_rate = (self.cost_bps / 2.0) / 10000.0 
-        # abs(trades_ts) is 1 on trade, 0 on hold. NaN for first element.
         transaction_costs_pct = abs(trades_ts) * one_way_cost_rate
-        # No transaction cost for the very first day's "non-trade" (where trades_ts is NaN)
         transaction_costs_pct = transaction_costs_pct.fillna(0.0)
 
         # 4. Calculate daily gross returns from asset and risk-free rate
-        # self.positions[t] is the position held during day t, earning asset_returns[t]
-        # (strategy.py ensures self.positions is already shifted for this purpose)
         active_asset_returns = self.positions * asset_returns
 
-        # Risk-free returns for idle capital (when position is 0)
         rf_component_returns = pd.Series(0.0, index=self.prices.index)
         if self.rf is not None:
-            # Assuming self.rf contains annualized percentages (e.g., 3.0 for 3%)
-            # De-annualize to daily rate. Using 365 for calendar days.
             daily_rf_rate = (self.rf / 100.0) / 365.0
-            # Apply RF return only when position is 0
             rf_component_returns = (1 - self.positions) * daily_rf_rate
         
-        # Combined gross daily returns
-        # .fillna(0.0) for asset_returns.iloc[0] which is NaN and for any NaNs in rf_component_returns
         gross_daily_returns = active_asset_returns.fillna(0.0) + rf_component_returns.fillna(0.0)
 
         # 5. Calculate net daily returns (after transaction costs)
@@ -97,22 +80,15 @@ class Backtester:
 
         # 6. Calculate equity curve (NAV)
         equity_curve = pd.Series(index=self.prices.index, dtype=float)
-        if not self.prices.empty:
+        if not self.prices.empty: # Should always be true if we passed the initial empty check
             equity_curve.iloc[0] = 1.0
             for t in range(1, len(self.prices)):
                 equity_curve.iloc[t] = equity_curve.iloc[t-1] * (1 + net_daily_returns.iloc[t])
-            # In case of any all-NaN slices leading to issues, ffill NAV.
-            # Given fillna(0) on returns components, this should mostly handle stable NAV during no-activity.
-            equity_curve = equity_curve.fillna(method='ffill') 
-        else: # Should be caught by the initial self.prices.empty check
-             equity_curve = pd.Series(dtype=float)
-
-
-        # Prepare BacktestResult outputs
-        # trades_ts has NaN for first row, fill with 0 and cast to int
+            
+            # Use .ffill() instead of .fillna(method='ffill')
+            equity_curve = equity_curve.ffill() 
+        
         final_trades = trades_ts.fillna(0).astype(int)
-
-        # self.positions is already aligned and should be int (0 or 1) from strategy module
         final_positions = self.positions.astype(int)
 
         return BacktestResult(
